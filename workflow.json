@@ -1,0 +1,85 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "zola-event",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "id": "fe8c5091-3fbb-4b55-bd31-b2e0d6aed970",
+      "name": "01 - Webhook (POST /zola-event)",
+      "webhookId": "zola-event"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "text",
+              "value": "={{ $json.body.text }}",
+              "type": "string"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.body.userId ?? 'user_demo' }}",
+              "type": "string"
+            },
+            {
+              "name": "ts",
+              "value": "={{ $now.toFormat('dd/MM/yyyy HH:mm:ss') }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [224, 0],
+      "id": "52076b59-d753-46f5-bfaf-a531a505b1da",
+      "name": "02 - Normalize Input (Set)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:7475/db/neo4j/tx/commit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"statements\": [\n    {\n      \"statement\": \"MERGE (u:User {id: $userId}) CREATE (e:Event {id: randomUUID(), text: $text, ts_br: $ts_br, ts: datetime()}) MERGE (u)-[:SENT]->(e) RETURN e.id AS eventId\",\n      \"parameters\": {\n        \"userId\": $json.userId,\n        \"text\": $json.text,\n        \"ts_br\": $json.ts\n      }\n    }\n  ]\n} }}"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [448, 0],
+      "id": "16e26610-7ee1-464c-8814-c9f5bab850b8",
+      "name": "03 - Neo4j Commit (HTTP)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": true,\n  \"saved\": true,\n  \"eventId\": \"={{ $json.results?.[0]?.data?.[0]?.row?.[0] }}\"\n}"
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [672, 0],
+      "id": "48a5b3ff-a397-45d0-900a-94e52b892824",
+      "name": "04 - Respond (JSON)"
+    }
+  ],
+  "connections": {
+    "01 - Webhook (POST /zola-event)": {
+      "main": [[{ "node": "02 - Normalize Input (Set)", "type": "main", "index": 0 }]]
+    },
+    "02 - Normalize Input (Set)": {
+      "main": [[{ "node": "03 - Neo4j Commit (HTTP)", "type": "main", "index": 0 }]]
+    },
+    "03 - Neo4j Commit (HTTP)": {
+      "main": [[{ "node": "04 - Respond (JSON)", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {}
+}
